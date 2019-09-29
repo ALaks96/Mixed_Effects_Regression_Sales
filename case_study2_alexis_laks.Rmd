@@ -1,0 +1,478 @@
+---
+title: "Case study 2: linear models and linear mixed effects models"
+author: Alexis Laks
+output:
+  html_document:
+    fig_height: 4
+    fig_width: 8
+    number_sections: yes
+---
+
+
+$$
+\newcommand{\esp}[1]{\mathbb{E}\left(#1\right)}
+\newcommand{\var}[1]{\mbox{Var}\left(#1\right)}
+\newcommand{\deriv}[1]{\dot{#1}(t)}
+\newcommand{\prob}[1]{ \mathbb{P}\!(#1)}
+\newcommand{\eqdef}{\mathop{=}\limits^{\mathrm{def}}}
+\newcommand{\by}{\boldsymbol{y}}
+\newcommand{\bc}{\boldsymbol{c}}
+\newcommand{\bpsi}{\boldsymbol{\psi}}
+\newcommand{\pmacro}{\texttt{p}}
+\def\like{{\cal L}}
+\def\llike{{\cal LL}}
+\def\logit{{\rm logit}}
+\def\probit{{\rm probit}}
+\def\one{{\rm 1\!I}}
+\def\iid{\mathop{\sim}_{\rm i.i.d.}}
+\def\res{e}
+\newcommand{\argmin}[1]{{\rm arg}\min_{#1}}
+\newcommand{\argmax}[1]{{\rm arg}\max_{#1}}
+$$
+
+<br />
+
+
+Preliminary comments:
+
+  - diagnostic plots are **always** welcome
+  - Bayesian Information Criteria (BIC) will be used for comparing models
+  
+</br>  
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+```
+
+
+# Fitting a linear model (*)
+
+The file <ttt>sales1.csv</ttt> consists of quarterly sales volumes (in % and indexed to the time 0) of a product.
+
+ 1. Plot the data
+ 
+```{r}
+don <- read.csv("salesData/sales1.csv")
+p1 <- don %>% 
+  ggplot() +
+  aes(x = time, y = y) +
+  geom_point() +
+  geom_line() +
+  xlab("time") +
+  ylab("percentage of sales") +
+  ggtitle("Sales throughout time") +
+  theme_bw()
+p1
+```
+
+ 2. Fit a polynomial model to this data (justify the choice of the degree). What do the residuals suggest? 
+ 
+ After plotting the data we don't recognize any higher order polynomial function, it actually looks like an affine function that we could resume with a straight line. We will hence fit a degree 1 polynomial to the data:
+ 
+```{r}
+lm1 <- lm(y ~ time, data = don)
+pred1 <- predict(lm1)
+don <- data.frame(don,pred1)
+summary(lm1)
+p2 <- p1 +
+  geom_line(data = don, aes(x = time, y = pred1), color = "red") +
+  theme_bw()
+p2
+par(mfrow=c(2,2))
+plot(lm1)
+```
+ 
+time variable is statistically significant according to the t-value, as well as the intercept. From the F-statistic p-value we see that adding the varaible time is better than an intercept only model and the adjusted R^2 is pretty high. 
+Diagnostic plots confirm gaussian linear model hypothesises (equal variance of residuals, normal distribution of residuals). Leverage and influence seems to be acceptable from cook's distance point of view.
+ 
+ 3. Try to improve the model by adding a periodic component (little reminder: $ \cos(2\pi t/T) $ and $\sin(2\pi t/T)$ are periodic functions of period $T$). Write your final model as a mathematical equation.
+ 
+ Here time is measured in months, we could thus try to add periodicity through years and aggregate time on 12. We'll use the $\sin(2\pi t/T)$ and add it to our model:
+ 
+ ## Using cos:
+ 
+ y = ß0 + ß1*t(i) + ß2*cos(Z*pi*t(i)/T) + e(i)) 
+ 
+```{r}
+lm2 <- lm(y ~ time + (cos((2*pi*time)/12)), data = don)
+pred2 <- predict(lm2)
+don <- data.frame(don,pred2)
+p3 <- p1 +
+  geom_line(data = don, aes(x = time, y = pred2), color = "red") +
+  theme_bw()
+p3
+summary(lm2)
+par(mfrow=c(2,2))
+plot(lm2)
+```
+ 
+ The new periodic term is just statistically significant at the sacrosanct level of 0.5 according to the t-value, all the other variables remained highly significant. From the F-statistic p-value we see that adding this second cosinus periodic term is better than an intercept only model and the adjusted R^2 is higher than the previous model. 
+Diagnostic plots confirm gaussian linear model hypothesises (equal variance of residuals, normal distribution of residuals). Leverage and influence seems to have improved compared to the previous model.
+ 
+ ## Using sinus:
+ 
+ y = ß0 + ß1*t(i) + ß2*sin(Z*pi*t(i)/T) + e(i)) 
+ 
+```{r}
+lm3 <- lm(y ~ time + (sin((2*pi*time)/12)), data = don)
+pred3 <- predict(lm3)
+don <- data.frame(don,pred3)
+p4 <- p1 +
+  geom_line(data = don, aes(x = time, y = pred3), color = "red") +
+  theme_bw()
+p4
+summary(lm3)
+par(mfrow=c(2,2))
+plot(lm3)
+```
+ 
+The new sinus periodic term is statistically significant according to the t-value, as well as the intercept and time. From the F-statistic p-value we see that adding this second model is better than an intercept only model and the adjusted R^2 is higher than all our other previous models. 
+Diagnostic plots confirm gaussian linear model hypothesises (equal variance of residuals, normal distribution of residuals) although it seems that the residuals aren't as evenly distributed as before. Nevertheless they remain acceptable. Leverage and influence seems to have improved compared to the degree 1 polynomial model.
+
+Although there are some improvements we could try using both terms in the model to see if they yield something better:
+
+## Cosinus & Sinus
+
+ y = ß0 + ß1*t(i) + ß2*sin(Z*pi*t(i)/T) + ß3*cos(Z*pi*t(i)/T) + e(i)) 
+
+```{r}
+lm4 <- lm(y ~ time + (sin((2*pi*time)/12)) + (cos((2*pi*time)/12)), data = don)
+pred4 <- predict(lm4)
+don <- data.frame(don,pred4)
+p5 <- p1 +
+  geom_line(data = don, aes(x = time, y = pred4), color = "red") +
+  theme_bw()
+p5
+summary(lm4)
+par(mfrow=c(2,2))
+plot(lm4)
+```
+
+All terms are statistically significant and the R-squared has even increased further. We can also see an improvement on equal variance and indepently distributed residuals from our previous model.
+
+To be sure which model is best untill now, we can compare all 4 with the BIC and AIC criterions for these models:
+
+```{r}
+BIC(lm1,lm2,lm3,lm4)
+AIC(lm1,lm2,lm3,lm4)
+```
+
+Seems that the most adequate model according to both criterions is the sinusoïdal and cosinus periodic term model.
+ 
+ 4. Plot on a same graph the observed sales together with the predicted sales given by your final model. What do you think about this model? What about the residuals?
+ 
+```{r}
+p5
+par(mfrow=c(2,2))
+plot(lm4)
+```
+ 
+ Again as I mentionned before, the terms in our model are individually statistically significant according to the t-test, the adjusted R^2 is highest among our models and both the AIC and BIC criterions confort us in our choice of this model. Concerning residuals, despite a slight deviation of the equal variance and independently distributed residuals assumptions of the guassian linear model, the model is valid remains valid. 
+So the model seems to fit our data correctly, but I'm afraid of overfitting.
+ 
+ 5. We want the predicted sales volume to be equal to 100 at time 0. Modify your final model in order to take this constraint into account.
+ 
+ We get rid of the previous intercept and force it to be equal to 100:
+ y(i) = f(time(i)) + e(i) with:
+ f(time) = 100 + ß1*time + ß2*sin(2*pi*time/12) + ß3*(cos(2*pi*time/12)-1) 
+ 
+```{r}
+lm5 <- lm(y -100 ~ -1 + time + I(sin((2*pi*time)/12)) + I(cos((2*pi*time)/12)-1), data = don)
+pred5 <- predict(lm5, don) +100
+don <- data.frame(don,pred5)
+p6 <- don %>% 
+  ggplot() +
+  aes(x = time, y = y) %>% 
+  geom_point() +
+  geom_line(aes(x = time, y = pred5), color = "red") +
+  theme_bw()
+p6
+summary(lm5)
+par(mfrow=c(2,2))
+plot(lm5)
+```
+
+To check that the intercept is indeed set to 100:
+
+```{r}
+NEW_PT <- data.frame(time = 0)
+predict(lm5,NEW_PT) + 100
+```
+
+</br>
+
+# Fitting a linear mixed effects model (**)
+
+The file <ttt>sales30.csv</ttt> now consists of quarterly sales volumes (still in % and indexed to the time 0) of 30 different products.
+
+ 1. Plot the data
+ 
+```{r}
+don2 <- read.csv("salesData/sales30.csv")
+p1 <- don2 %>% 
+  ggplot() +
+  aes(x = time, y = y, color = as.factor(id)) +
+  geom_point() +
+  xlab("time") +
+  ylab("sales") +
+  ggtitle("quarterly sales for 30 different products")
+p1
+```
+ 
+ 2. Fit the model used previously for fitting the first series to this data and comment the results.
+ 
+```{r}
+lm6 <- lm(y ~ time + (sin((2*pi*time)/12)) + (cos((2*pi*time)/12)),
+          data = don2)
+pred6 <- predict(lm6)
+don2 <- data.frame(don2,pred6)
+p2 <- p1 + 
+  geom_line(data = don2, aes(x = time, y = pred6)) +
+  facet_wrap(~id)
+p2
+summary(lm6)
+par(mfrow = c(2,2))
+plot(lm6)
+```
+ 
+ Here we do not take into account randomness in the intercept for each model, which explains why sometimes the fit is way above or way under the actual datapoints.
+ 
+ 3. Fit a mixed effect model to this data (discuss the choice of fixed and random effects).
+ Write your final model as a mathematical equation.
+
+```{r message=FALSE, warning=FALSE}
+library(lme4)
+don2 <- don2 %>% 
+  mutate(cos_per = cos((2*pi*time)/12)) %>% 
+  mutate(sin_per = sin((2*pi*time)/12))
+```
+ 
+ There are various ways we can introduce randomness in our model, we'll proceed sequentially:
+ 
+## Intercept random effects
+ 
+ This was our first intuition when looking at the plot above
+ 
+```{r message=FALSE, warning=FALSE}
+lmr1 <- lmer(y ~ (1|id) + time + sin_per + cos_per, data = don2)
+```
+ 
+ Seems there could also be also randomness on the slope when looking closer!
+ 
+## Intercept & Slope random effects
+ 
+```{r message=FALSE, warning=FALSE}
+lmr2 <- lmer(y ~ (time|id) + sin_per + cos_per, data = don2)
+```
+ 
+## Sinusoidal random effects
+ 
+### with intercept randomness
+ 
+```{r message=FALSE, warning=FALSE}
+lmr3 <- lmer(y ~ (time|id) +
+               sin_per + 
+               cos_per + 
+               (cos_per + time|id),
+             data = don2)
+```
+ 
+### without
+ 
+```{r message=FALSE, warning=FALSE}
+lmr4 <- lmer(y ~ time + sin_per + (time + sin_per | id) + cos_per, data = don2)
+```
+ 
+## Cosinus random effects
+ 
+### with intercept randomness
+ 
+```{r message=FALSE, warning=FALSE}
+lmr5 <- lmer(y ~ (time|id) +
+               cos_per + 
+               (time + cos_per | id) + 
+               sin_per,
+             data = don2)
+```
+ 
+### without
+ 
+```{r message=FALSE, warning=FALSE}
+lmr6 <- lmer(y ~ time +
+               cos_per + 
+               (time + cos_per | id) +
+               sin_per,
+             data = don2)
+```
+ 
+## Periodic element random effects:
+ 
+### with intercept randomness
+
+```{r message=FALSE, warning=FALSE}
+lmr7 <- lmer(y ~ (time|id) +
+               cos_per +
+               (time + cos_per | id) +
+               (time + sin_per | id),
+             data = don2)
+```
+ 
+### without
+ 
+```{r message=FALSE, warning=FALSE}
+lmr8 <- lmer(y ~ time +
+               cos_per +
+               (time + cos_per | id) +
+               (time + sin_per | id),
+             data = don2)
+```
+ 
+Now to compare all these models let's use BIC and AIC criterion:
+
+```{r}
+AIC(lmr1,lmr2,lmr3,lmr4,lmr5,lmr6,lmr7,lmr8)
+BIC(lmr1,lmr2,lmr3,lmr4,lmr5,lmr6,lmr7,lmr8)
+```
+
+There is a lot of other combinations possible, but at first hand we can see that the model taking into account random effects for the sinusoïdal periodic term without randomness on the intercept really stands out. We can check if removing correlation between random effects can further improve our best model here
+
+```{r message=FALSE, warning=FALSE}
+lmr9 <- lmer(y ~ time + sin_per + ( -1 + time + sin_per | id) + cos_per, data = don2)
+BIC(lmr9,lmr4)
+AIC(lmr9,lmr4)
+```
+
+We will therefore consider the following model:
+
+y(i,t) = ß0 + ß1(i)*time(i,t) + ß2(i)*sin(2*pi*time(i,t)/12) + ß3*(cos(2*pi*time(t)/12)-1) + e(i,t)
+
+ 4. Plot the data with the predicted sales given by your final model.
+ 
+```{r}
+pred9 <- predict(lmr9)
+don2 <- data.frame(don2,pred9)
+p9 <- p1 + 
+  geom_line(data = don2, aes(x = time, y = pred9)) +
+  facet_wrap(~id)
+p9
+```
+ 
+ Indeed the models seem to fit better than our first try. 
+ 
+ 5. How could you take into account the previous constraint (predicted sales volume are all equal to 100 at time 0)? 
+ 
+ We use the same model as before taking into account this constraint and the different ids:
+ 
+ y(i,t) = 100 + ß1(i)*time(i,t) + ß2(i)*sin(2*pi*time(i,t)/12) + ß3*(cos(2*pi*time(t)/12)-1) + e(i,t)
+ 
+ - The model:
+
+```{r}
+lmr10 <- lmer(y -100 ~ -1 +
+                time +
+                I(sin((2*pi*time)/12)) +
+                (-1 + time + I(sin((2*pi*time)/12)) || id) +
+                I(cos((2*pi*time)/12)-1),
+              data = don2)
+```
+ 
+ - Plotting our results:
+ 
+```{r}
+pred10 <- predict(lmr10,don2) + 100
+don2 <- data.frame(don2,pred10)
+p10 <- p1 +
+  geom_line(data = don2, aes(x = time, y=pred10, color = as.factor(id))) +
+  theme_bw()
+p10
+```
+
+</br>
+
+# Individual prediction  (***)
+
+The file <ttt>salesNew.csv</ttt> consists of quarterly sales volumes of another product.
+
+The final model of part 2 will be used here. In other words, you should not use the new data to fit any new model.
+
+ 1. Suppose first that we don't have any data for this product (although data are available for this product, we act as if we do not know them). How can we predict the sales volumes for this product? plot the data and the prediction on a same graph.
+ 
+```{r}
+don3 <- read.csv("salesData/salesNew.csv")
+lmr <- lmer(y ~ time + cos_per + sin_per + (-1 + time + sin_per || id), don2)
+```
+ 
+ If we don't have any new observations X we must infer our prediction from y_hat yielded by our previous model.
+ 
+ - First let's generate a similar dataset to the one we have:
+ 
+```{r}
+t <- seq(0,66,0.2)
+X <- cbind(1,t,cos(2*pi*t/12)-1, sin(2*pi*t/12))
+```
+
+ - Then we retrieve the coefficients of our previous model:
+
+```{r}
+beta <- fixef(lmr)
+```
+
+ - Then using these coefficients we retrieve our y_hat:
+
+```{r}
+pred <- data.frame(time=t, pred0=X %*% beta)
+```
+
+- And finally plotting our results vs the real data yields: 
+
+```{r}
+p13 <- ggplot(don3, aes(x = time, y = y)) +
+  geom_point() + 
+  xlab("time") + 
+  ylab("sales") +
+  geom_line(data = pred, aes(time, pred0), color = "red")
+p13
+```
+ 
+ The results aren't astonishing, the curve is off compared to our datapoints!
+ 
+ 2. Suppose now that only the first data at time 1 is available for this product. Compute and plot the new predictions.
+ 
+ 3. Repeat the same process with an increasing number of observed data. Comment the results.
+   
+ *I'll be answering these two questions in one*
+ 
+ This is what we call a-priori information, thanks to this we can access the so called Bayesian estimators which use conditional laws of X and Y to retrieve a supposedly more accurate estimator. In our case we can consider the MAP estimator we've seen in class.
+ 
+ - We first need to retrieve the variances of our estimators:
+ 
+```{r}
+summary(lmr)
+Sig <- diag(c(0.01878,8.42647)) 
+sig <- solve(Sig)
+res <- 1.036
+```
+ 
+ - Then we check our model according to an increasing number of datapoints known:
+ 
+```{r}
+t <- seq(1,61,3)
+pts <- seq(1,20,3)
+for (j in pts){
+  betaj <- beta
+  yj <- don3$y[1:j]
+  tj <- t[1:j]
+  Xj <- cbind(1, tj, cos(2*pi*tj/12)-1, sin(2*pi*tj/12))
+  Aj <- cbind(tj, sin(2*pi*tj/12))
+  coefj <- solve(t(Aj) %*% Aj/res + sig)
+  coeffj <- coefj %*% t(Aj) %*% (yj - Xj %*% beta)/res
+  betaj["time"] <- beta["time"] + coeffj[1]
+  betaj["sin_per"] <- beta["sin_per"] + coeffj[2]
+  pred$predj <- X %*% betaj
+  print(p13 +
+    geom_line(data = pred, aes(x = time, y = predj), color = "green"))
+}
+```
+
+We can see the fit improving as we increase the number of data points we integrate in our estimation, which was to be expected.
